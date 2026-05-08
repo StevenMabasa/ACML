@@ -15,7 +15,7 @@ from sklearn.metrics import (
 DATA_PATH = 'sequence_dataset.npz'
 NUM_CLASSES = 4
 BATCH_SIZE = 128
-EPOCHS = 100
+EPOCHS = 70
 LR = 1e-4
 HIDDEN_SIZE = 64
 GRAD_CLIP = 1.0
