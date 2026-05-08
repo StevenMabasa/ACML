@@ -67,7 +67,7 @@ optimizer = torch.optim.Adam(
 )
 
 # The training of the network
-epochs = 100
+epochs = 200
 
 for epoch in range(epochs):
 

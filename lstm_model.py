@@ -15,9 +15,10 @@ from sklearn.metrics import (
 DATA_PATH = 'sequence_dataset.npz'
 NUM_CLASSES = 4
 BATCH_SIZE = 128
-EPOCHS = 25
-LR = 1e-3
+EPOCHS = 100
+LR = 1e-4
 HIDDEN_SIZE = 64
+GRAD_CLIP = 1.0
 NUM_LAYERS = 1
 DROPOUT = 0.2
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -28,6 +29,27 @@ def load_sequence_data(path):
     X_seq = archive['X_seq'].astype(np.float32)
     X_static = archive['X_static'].astype(np.float32)
     y = archive['y'].astype(np.int64)
+    
+    # Handle NaN values in X_static
+    for col in range(X_static.shape[1]):
+        col_data = X_static[:, col]
+        nan_mask = np.isnan(col_data)
+        if nan_mask.any():
+            col_mean = np.nanmean(col_data)
+            X_static[nan_mask, col] = col_mean
+    
+    # Normalize X_seq (sequences of interactions)
+    seq_mean = X_seq.mean(axis=(0, 1), keepdims=True)
+    seq_std = X_seq.std(axis=(0, 1), keepdims=True)
+    seq_std = np.maximum(seq_std, 1e-8)  # avoid division by zero
+    X_seq = (X_seq - seq_mean) / seq_std
+    
+    # Normalize X_static (static features)
+    static_mean = X_static.mean(axis=0, keepdims=True)
+    static_std = X_static.std(axis=0, keepdims=True)
+    static_std = np.maximum(static_std, 1e-8)
+    X_static = (X_static - static_mean) / static_std
+    
     return X_seq, X_static, y
 
 
@@ -95,6 +117,7 @@ def train_epoch(model, loader, criterion, optimizer):
         logits = model(x_seq, x_static)
         loss = criterion(logits, y)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
         optimizer.step()
 
         total_loss += loss.item() * x_seq.size(0)
@@ -141,6 +164,15 @@ def main():
         num_classes=NUM_CLASSES,
         dropout=DROPOUT,
     ).to(DEVICE)
+    
+    # Initialize weights
+    for name, param in model.named_parameters():
+        if 'weight_ih' in name:
+            nn.init.xavier_uniform_(param)
+        elif 'weight_hh' in name:
+            nn.init.orthogonal_(param)
+        elif 'bias' in name:
+            nn.init.constant_(param, 0)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
